@@ -1,1 +1,17 @@
-gastos/credentials.json
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Base de datos
+*.db
+
+# Credenciales (NUNCA subir)
+credentials.json
+.env
+
+# Sistema
+.DS_Store
+Thumbs.db
+

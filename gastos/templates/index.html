@@ -15,27 +15,39 @@
             <p class="fecha" id="fecha-actual"></p>
         </header>
 
-        <!-- PRESUPUESTOS -->
-        <section class="presupuestos-section" id="presupuestos-container">
-            <!-- Se carga dinámicamente -->
+        <!-- RESUMEN RÁPIDO DEL DÍA -->
+        <section class="resumen-dia">
+            <div class="card-grande disponible">
+                <span class="label">💵 Disponible hoy</span>
+                <span class="valor" id="total-disponible">$0.00</span>
+                <span class="subtitulo" id="total-limite">de $0.00</span>
+            </div>
+            <div class="card-grande gastado">
+                <span class="label">🛒 Gastado hoy</span>
+                <span class="valor" id="total-gastado">$0.00</span>
+                <span class="subtitulo" id="cantidad-gastos">0 gastos</span>
+            </div>
+        </section>
+
+        <!-- PRESUPUESTOS DETALLADOS -->
+        <section class="presupuestos-section">
+            <div class="seccion-titulo">
+                <h2>📊 Presupuestos</h2>
+                <button class="btn-icono" onclick="abrirPresupuestos()">⚙️</button>
+            </div>
+            <div id="presupuestos-container"></div>
         </section>
 
         <!-- FORMULARIO -->
         <section class="form-section">
-            <h2>➕ Registrar gasto</h2>
+            <h2>➕ Nuevo gasto</h2>
             <form id="form-gasto">
                 <input type="text" id="descripcion" placeholder="¿Qué compraste?" required>
                 <input type="number" id="monto" placeholder="Monto" step="0.01" min="0.01" required>
-                <select id="categoria">
-                    <option value="Comida">🍔 Comida ($10/día)</option>
-                    <option value="Pasaje">🚌 Pasaje ($3/día)</option>
-                    <option value="Supermercado">🛒 Supermercado ($80/sem)</option>
-                    <option value="Ocio">🎮 Ocio</option>
-                    <option value="Salud">💊 Salud</option>
-                    <option value="Hogar">🏠 Hogar</option>
-                    <option value="General">📦 General</option>
+                <select id="categoria" required>
+                    <option value="">Seleccionar categoría</option>
                 </select>
-                <button type="submit" class="btn-primary">Registrar</button>
+                <button type="submit" class="btn-primary">Registrar gasto</button>
             </form>
         </section>
 
@@ -45,37 +57,36 @@
             <ul id="lista-gastos"></ul>
         </section>
 
-        <button class="btn-sync" onclick="sincronizar()">☁️ Sincronizar Sheets</button>
+        <button class="btn-sync" onclick="sincronizar()">☁️ Sincronizar con Google Sheets</button>
     </div>
 
-    <!-- MODAL ALERTA LÍMITE -->
+    <!-- MODALES -->
     <div id="modal-alerta" class="modal">
         <div class="modal-content alerta">
             <h2>🚫 ¡LÍMITE EXCEDIDO!</h2>
             <p id="modal-mensaje"></p>
-            <div id="modal-detalles"></div>
+            <div id="modal-detalles" class="modal-detalles"></div>
             <button onclick="cerrarModal()" class="btn-primary">Entendido</button>
         </div>
     </div>
 
-    <!-- MODAL ÉXITO -->
     <div id="modal-exito" class="modal">
         <div class="modal-content exito">
-            <h2>✅ Gasto registrado</h2>
+            <h2>✅ ¡Listo!</h2>
             <p id="exito-mensaje"></p>
-            <div id="exito-detalles"></div>
             <button onclick="cerrarExito()" class="btn-primary">Aceptar</button>
         </div>
     </div>
 
-    <!-- MODAL EDITAR PRESUPUESTOS -->
     <div id="modal-presupuestos" class="modal">
         <div class="modal-content">
-            <h2>⚙️ Editar presupuestos</h2>
+            <h2>⚙️ Configurar presupuestos</h2>
+            <p class="modal-descripcion">Define cuánto querés gastar por categoría y período</p>
             <div id="presupuestos-edit"></div>
+            <button class="btn-nuevo-pres" onclick="nuevoPresupuesto()">➕ Agregar presupuesto</button>
             <div class="modal-buttons">
                 <button onclick="cerrarPresupuestos()" class="btn-secundario">Cancelar</button>
-                <button onclick="guardarPresupuestos()" class="btn-primary">Guardar</button>
+                <button onclick="guardarPresupuestos()" class="btn-primary">Guardar todo</button>
             </div>
         </div>
     </div>

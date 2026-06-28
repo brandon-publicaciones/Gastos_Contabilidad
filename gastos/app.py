@@ -1,13 +1,14 @@
 from flask import Flask, render_template, request, jsonify
 from database import (
-    init_db, get_presupuestos, set_presupuesto, get_presupuesto,
-    get_gastos_periodo, add_gasto, get_gastos_hoy_detalle,
-    delete_gasto, get_resumen_completo
+    init_db, get_presupuestos, set_presupuesto, delete_presupuesto,
+    get_total_gastado, add_gasto, get_gastos_hoy, delete_gasto,
+    get_resumen_completo, get_total_gastado_hoy
 )
 from sync_sheets import sync_to_sheets
 
 app = Flask(__name__)
 init_db()
+
 
 @app.route("/")
 def index():
@@ -16,16 +17,14 @@ def index():
 
 @app.route("/api/resumen", methods=["GET"])
 def resumen():
-    """Estado de todos los presupuestos"""
-    data = get_resumen_completo()
-    gastos_hoy = get_gastos_hoy_detalle()
     return jsonify({
-        "presupuestos": data,
+        "presupuestos": get_resumen_completo(),
         "gastos_hoy": [
             {"id": g[0], "descripcion": g[1], "monto": g[2],
-             "categoria": g[3], "fecha": g[4], "hora": g[5]}
-            for g in gastos_hoy
-        ]
+             "categoria": g[3], "hora": g[4]}
+            for g in get_gastos_hoy()
+        ],
+        "total_gastado_hoy": get_total_gastado_hoy()
     })
 
 
@@ -34,18 +33,17 @@ def presupuestos():
     if request.method == "POST":
         data = request.json
         set_presupuesto(data["categoria"], data["periodo"], float(data["monto"]))
-        # Re-sincronizar
-        try: sync_to_sheets()
-        except: pass
         return jsonify({"ok": True})
-    return jsonify(get_presupuestos_list())
+    return jsonify([
+        {"categoria": c, "periodo": p, "monto": m}
+        for c, p, m in get_presupuestos()
+    ])
 
 
-def get_presupuestos_list():
-    return [
-        {"categoria": k[0], "periodo": k[1], "monto": v}
-        for k, v in get_presupuestos().items()
-    ]
+@app.route("/api/presupuestos/<cat>/<per>", methods=["DELETE"])
+def eliminar_presupuesto(cat, per):
+    delete_presupuesto(cat, per)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/gastos", methods=["POST"])
@@ -55,62 +53,52 @@ def registrar_gasto():
     monto = float(data["monto"])
     categoria = data["categoria"]
 
-    # === VALIDACIÓN PRINCIPAL ===
-    presupuestos_cat = get_presupuestos()
-    categoria_lower = categoria.lower()
-
+    # Validar contra TODOS los presupuestos de esa categoría
+    presupuestos = get_presupuestos()
     bloqueos = []
-    presupuestos_aplicables = []
+    detalles = []
 
-    # Buscar presupuestos para esta categoría
-    for (cat, per), limite in presupuestos_cat.items():
-        if cat.lower() == categoria_lower:
-            gastado = get_gastos_periodo(cat, per)
-            nuevo_total = gastado + monto
+    for cat, per, limite in presupuestos:
+        if cat.lower() == categoria.lower():
+            gastado = get_total_gastado(cat, per)
             disponible = limite - gastado
-            presupuestos_aplicables.append({
+            nuevo_total = gastado + monto
+            detalles.append({
                 "categoria": cat,
                 "periodo": per,
                 "limite": limite,
-                "gastado_actual": gastado,
+                "gastado": gastado,
                 "disponible": disponible,
-                "nuevo_total": nuevo_total,
                 "excedido": nuevo_total > limite
             })
             if nuevo_total > limite:
-                bloqueos.append(f"{per.capitalize()}: te pasarías (disponible ${disponible:.2f})")
+                bloqueos.append(
+                    f"• {per.capitalize()}: ${disponible:.2f} disponible, querés gastar ${monto:.2f}"
+                )
 
-    # Si hay bloqueos en ALGÚN período → no permitir
     if bloqueos:
         return jsonify({
             "ok": False,
             "bloqueado": True,
-            "motivo": " | ".join(bloqueos),
-            "mensaje": f"🚫 NO PODÉS COMPRAR ESTO.\n\n" + "\n".join(bloqueos),
-            "detalles": presupuestos_aplicables
+            "mensaje": "🚫 NO PODÉS HACER ESTE GASTO\n\n" + "\n".join(bloqueos),
+            "detalles": detalles
         }), 403
 
-    # Si pasa todas las validaciones → guardar
     add_gasto(descripcion, monto, categoria)
-
     try: sync_to_sheets()
-    except Exception as e: print(f"Sync: {e}")
+    except: pass
 
     return jsonify({
         "ok": True,
         "bloqueado": False,
-        "detalles": presupuestos_aplicables,
-        "mensaje": f"✅ Gasto registrado. " +
-                   " | ".join([f"{p['periodo']}: ${p['disponible'] - monto:.2f} disp."
-                               for p in presupuestos_aplicables])
+        "detalles": detalles,
+        "mensaje": f"✅ Gasto de ${monto:.2f} registrado"
     })
 
 
 @app.route("/api/gastos/<int:id>", methods=["DELETE"])
-def eliminar(id):
+def eliminar_gasto(id):
     delete_gasto(id)
-    try: sync_to_sheets()
-    except: pass
     return jsonify({"ok": True})
 
 

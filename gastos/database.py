@@ -3,24 +3,22 @@ from datetime import datetime, date, timedelta
 
 DB_NAME = "gastos.db"
 
+
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
 
-    # Gastos
     c.execute('''
         CREATE TABLE IF NOT EXISTS gastos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             descripcion TEXT NOT NULL,
             monto REAL NOT NULL,
             categoria TEXT NOT NULL,
-            periodo TEXT NOT NULL,
             fecha TEXT NOT NULL,
             hora TEXT NOT NULL
         )
     ''')
 
-    # Presupuestos (uno por categoría + período)
     c.execute('''
         CREATE TABLE IF NOT EXISTS presupuestos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,7 +29,7 @@ def init_db():
         )
     ''')
 
-    # Insertar valores por defecto solo si la tabla está vacía
+    # Valores por defecto
     c.execute("SELECT COUNT(*) FROM presupuestos")
     if c.fetchone()[0] == 0:
         defaults = [
@@ -39,6 +37,8 @@ def init_db():
             ("Pasaje", "diario", 3.00),
             ("Supermercado", "semanal", 80.00),
             ("Supermercado", "mensual", 470.00),
+            ("Ocio", "semanal", 50.00),
+            ("Transporte", "semanal", 30.00),
         ]
         c.executemany(
             "INSERT INTO presupuestos (categoria, periodo, monto) VALUES (?, ?, ?)",
@@ -52,13 +52,12 @@ def init_db():
 # ============== PRESUPUESTOS ==============
 
 def get_presupuestos():
-    """Devuelve dict {(categoria, periodo): monto}"""
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("SELECT categoria, periodo, monto FROM presupuestos")
     rows = c.fetchall()
     conn.close()
-    return {(r[0], r[1]): r[2] for r in rows}
+    return [(r[0], r[1], r[2]) for r in rows]
 
 
 def set_presupuesto(categoria, periodo, monto):
@@ -72,54 +71,34 @@ def set_presupuesto(categoria, periodo, monto):
     conn.close()
 
 
-def get_presupuesto(categoria, periodo):
+def delete_presupuesto(categoria, periodo):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute(
-        "SELECT monto FROM presupuestos WHERE categoria=? AND periodo=?",
-        (categoria, periodo)
-    )
-    row = c.fetchone()
+    c.execute("DELETE FROM presupuestos WHERE categoria=? AND periodo=?", (categoria, periodo))
+    conn.commit()
     conn.close()
-    return row[0] if row else 0
 
 
 # ============== GASTOS ==============
 
 def add_gasto(descripcion, monto, categoria):
-    """Guarda el gasto en el período correcto según la fecha"""
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     ahora = datetime.now()
     c.execute(
-        "INSERT INTO gastos (descripcion, monto, categoria, periodo, fecha, hora) VALUES (?, ?, ?, ?, ?, ?)",
-        (descripcion, monto, categoria, "diario", ahora.strftime("%Y-%m-%d"), ahora.strftime("%H:%M:%S"))
+        "INSERT INTO gastos (descripcion, monto, categoria, fecha, hora) VALUES (?, ?, ?, ?, ?)",
+        (descripcion, monto, categoria,
+         ahora.strftime("%Y-%m-%d"), ahora.strftime("%H:%M:%S"))
     )
     conn.commit()
     conn.close()
 
 
-def get_gastos_periodo(categoria, periodo):
-    """Devuelve el total gastado en una categoría + período"""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    hoy = date.today()
-    fecha_inicio, fecha_fin = calcular_rango(periodo, hoy)
-
-    c.execute(
-        "SELECT COALESCE(SUM(monto), 0) FROM gastos WHERE categoria=? AND fecha BETWEEN ? AND ?",
-        (categoria, fecha_inicio, fecha_fin)
-    )
-    total = c.fetchone()[0]
-    conn.close()
-    return total
-
-
-def get_gastos_hoy_detalle():
+def get_gastos_hoy():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute(
-        "SELECT id, descripcion, monto, categoria, fecha, hora FROM gastos WHERE fecha=? ORDER BY id DESC",
+        "SELECT id, descripcion, monto, categoria, hora FROM gastos WHERE fecha=? ORDER BY id DESC",
         (date.today().strftime("%Y-%m-%d"),)
     )
     rows = c.fetchall()
@@ -135,35 +114,50 @@ def delete_gasto(id):
     conn.close()
 
 
-# ============== HELPERS ==============
+# ============== CÁLCULOS ==============
 
-def calcular_rango(periodo, fecha_ref):
-    """Devuelve (fecha_inicio, fecha_fin) según el período"""
+def calcular_rango(periodo, fecha_ref=None):
+    if fecha_ref is None:
+        fecha_ref = date.today()
+
     if periodo == "diario":
         inicio = fin = fecha_ref.strftime("%Y-%m-%d")
     elif periodo == "semanal":
-        # Semana desde lunes a domingo
-        inicio_semana = fecha_ref - timedelta(days=fecha_ref.weekday())
-        fin_semana = inicio_semana + timedelta(days=6)
-        inicio = inicio_semana.strftime("%Y-%m-%d")
-        fin = fin_semana.strftime("%Y-%m-%d")
+        # Semana de lunes a domingo
+        inicio_sem = fecha_ref - timedelta(days=fecha_ref.weekday())
+        fin_sem = inicio_sem + timedelta(days=6)
+        inicio = inicio_sem.strftime("%Y-%m-%d")
+        fin = fin_sem.strftime("%Y-%m-%d")
     elif periodo == "mensual":
         inicio = fecha_ref.replace(day=1).strftime("%Y-%m-%d")
-        # último día del mes
         if fecha_ref.month == 12:
             fin = fecha_ref.replace(day=31).strftime("%Y-%m-%d")
         else:
-            next_month = fecha_ref.replace(month=fecha_ref.month + 1, day=1)
-            fin = (next_month - timedelta(days=1)).strftime("%Y-%m-%d")
+            prox = fecha_ref.replace(month=fecha_ref.month + 1, day=1)
+            fin = (prox - timedelta(days=1)).strftime("%Y-%m-%d")
     return inicio, fin
 
 
+def get_total_gastado(categoria, periodo):
+    """Total gastado en una categoría dentro del período"""
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    inicio, fin = calcular_rango(periodo)
+    c.execute(
+        "SELECT COALESCE(SUM(monto), 0) FROM gastos WHERE categoria=? AND fecha BETWEEN ? AND ?",
+        (categoria, inicio, fin)
+    )
+    total = c.fetchone()[0]
+    conn.close()
+    return total
+
+
 def get_resumen_completo():
-    """Devuelve el estado actual de TODOS los presupuestos"""
+    """Estado de todos los presupuestos con sus cálculos"""
     presupuestos = get_presupuestos()
     resumen = []
-    for (cat, per), monto in presupuestos.items():
-        gastado = get_gastos_periodo(cat, per)
+    for cat, per, monto in presupuestos:
+        gastado = get_total_gastado(cat, per)
         resumen.append({
             "categoria": cat,
             "periodo": per,
@@ -174,3 +168,15 @@ def get_resumen_completo():
             "excedido": gastado > monto
         })
     return resumen
+
+
+def get_total_gastado_hoy():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute(
+        "SELECT COALESCE(SUM(monto), 0) FROM gastos WHERE fecha=?",
+        (date.today().strftime("%Y-%m-%d"),)
+    )
+    total = c.fetchone()[0]
+    conn.close()
+    return total
