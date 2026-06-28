@@ -180,3 +180,4 @@ def get_total_gastado_hoy():
     total = c.fetchone()[0]
     conn.close()
     return total
+

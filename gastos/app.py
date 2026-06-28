@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify
+import os
 from database import (
     init_db, get_presupuestos, set_presupuesto, delete_presupuesto,
     get_total_gastado, add_gasto, get_gastos_hoy, delete_gasto,
@@ -53,7 +54,6 @@ def registrar_gasto():
     monto = float(data["monto"])
     categoria = data["categoria"]
 
-    # Validar contra TODOS los presupuestos de esa categoría
     presupuestos = get_presupuestos()
     bloqueos = []
     detalles = []
@@ -111,5 +111,6 @@ def sync():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# ⬇️ ESTO VA ACÁ, AL FINAL DE app.py ⬇️
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
