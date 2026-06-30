@@ -110,6 +110,9 @@ def sync():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
+@app.route('/manifest.json')
+def manifest():
+    return app.send_static_file('manifest.json')
 
 # ⬇️ ESTO VA ACÁ, AL FINAL DE app.py ⬇️
 if __name__ == "__main__":
